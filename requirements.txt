@@ -6,4 +6,7 @@ pyproj
 Pillow
 pandas
 numpy
-pytorch
+torch
+matplotlib
+tqdm
+transformers
