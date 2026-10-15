@@ -6,3 +6,4 @@ pyproj
 Pillow
 pandas
 numpy
+pytorch
