@@ -18,7 +18,7 @@ CROP_SIZE = 512
 BLOCK_SIZE_M = 1_000
 SEED = 67
 DEFAULT_CROPS = {"train": 25_000, "val": 3_000, "test": 3_000}
-CATEGORY_FRACTIONS = {"positive": 0.20, "mixed": 0.30, "background": 0.50}
+CATEGORY_FRACTIONS = {"positive": 0.70, "mixed": 0.10, "background": 0.20}
 POSITIVE_MIN, MIXED_MIN = 0.05, 0.002
 MIN_VALID_FRACTION, MIN_BRIGHTNESS, MAX_BRIGHTNESS = 0.98, 10, 245
 

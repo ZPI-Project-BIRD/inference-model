@@ -1,12 +1,38 @@
-# Modular building-footprint inference
+# Geo Inference
 
-## Modules
-- `geo_inference/model.py`: SegFormer loading and tiled inference.
-- `geo_inference/geometry.py`: polygon cleanup and rectangle decomposition.
-- `geo_inference/outputs.py`: preview images and GeoJSON writing.
-- `geo_inference/pipeline.py`: end-to-end processing of one GeoTIFF; exports preview PNG, GeoJSON and GeoPackage layers.
-- `geo_inference/cli.py`: local-file CLI.
-- `geo_inference/geodown_consumer.py`: RabbitMQ + MinIO adapter, no PostgreSQL dependency.
+Python worker for running building detection jobs from the Geoportal database.
 
-## Local use
-`python -m geo_inference.cli --model /path/to/best_model --input /path/to/file.tif --output ./output`
+## Run
+
+From the `inference-model` directory:
+
+```bash
+# Create your local configuration
+cp .env.example .env
+
+# Edit .env if your paths or connection settings differ
+nano .env
+
+# Install dependencies (if not already installed)
+.venv/bin/pip install -r requirements.txt
+
+# Check the Python files
+.venv/bin/python -m py_compile \
+  geo_inference/database_worker.py \
+  geo_inference/pipeline.py
+
+# Start the database worker
+PYTHONUNBUFFERED=1 .venv/bin/python -u -m geo_inference.database_worker
+```
+
+The worker polls PostgreSQL for pending recognition jobs, downloads the source
+GeoTIFF from the configured object-storage bucket, runs building detection,
+and saves the polygon coordinates to the database and to a `detections.json`
+file under `RESULTS_DIR`.
+
+Stop the worker with `Ctrl+C`.
+
+## Configuration
+
+Copy `.env.example` to `.env` and adjust the values for your environment.
+Keep `.env` local; do not commit credentials or local paths.

@@ -232,11 +232,11 @@ def save_previews(model, dataset, device, output_path, count=6):
         image = denormalize(item["pixel_values"])
 
         overlay = image.copy()
-        overlay[target] = 0.65 * overlay[target] + 0.35 * [0, 1, 0]
+        overlay[target] = 0.65 * overlay[target] + 0.35 * np.array([0, 1, 0])
         overlay[prediction & ~target] = (
-            0.65 * overlay[prediction & ~target] + 0.35 * [1, 0, 0])
+            0.65 * overlay[prediction & ~target] + 0.35 * np.array([0, 1, 0]))
         overlay[target & ~prediction] = (
-            0.65 * overlay[target & ~prediction] + 0.35 * [0, 0, 1])
+            0.65 * overlay[target & ~prediction] + 0.35 * np.array([0, 1, 0]))
 
         panels = [
             (image, "Aerial image", None),
@@ -444,3 +444,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    

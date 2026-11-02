@@ -7,6 +7,12 @@ Pillow
 pandas
 numpy
 torch
+torchvision
 matplotlib
 tqdm
 transformers
+
+pika>=1.3.2
+psycopg[binary]>=3.2
+minio>=7.2
+python-dotenv>=1.0
