@@ -1,8 +1,59 @@
 # inference-model
 
-## Dependecies
+## Dependencies
 
 All in `requirements.txt`
+
+## Run the inference database worker
+
+The worker requires:
+
+- PostgreSQL on `localhost:5432` with the Geoportal migrations applied;
+- Floci on `http://localhost.floci.io:4566`;
+- downloaded feature TIFFs and pending recognition jobs in the database.
+
+From this repository's root, create the environment and download the trained B3
+checkpoint:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+
+.venv/bin/hf download McAntek/building-segmentation-poland-b3 \
+  --revision c950b74ced2867457054decc4264b4588329cb31 \
+  --local-dir .cache/models/building-segmentation-poland-b3
+```
+
+Create the local configuration and start the worker:
+
+```bash
+cp .env.example .env
+.venv/bin/python -u -m geo_inference.database_worker
+```
+
+The checked-in example is ready for the local stack. In particular, these
+values connect the worker to Floci's feature storage:
+
+```dotenv
+MINIO_ENDPOINT=localhost.floci.io:4566
+MINIO_ACCESS_KEY=test
+MINIO_SECRET_KEY=test
+MINIO_SOURCE_BUCKET=features
+MINIO_SECURE=false
+```
+
+`MINIO_ENDPOINT` is a `host:port` value without an `http://` prefix. The
+downloader writes each `<feature-id>.tif` object to its `S3_SOURCE_BUCKET`,
+which is `features` in the local Floci configuration, and stores that object
+key in `geoportal.features.object_name`. The inference worker therefore must
+use `MINIO_SOURCE_BUCKET=features` as well; `tiles` is a different bucket.
+
+The worker validates the bucket and database schema at startup, loads the model
+from `MODEL_DIR`, and then immediately begins claiming pending jobs. Results are
+stored in PostgreSQL and under `RESULTS_DIR`. Stop it with `Ctrl+C`.
+
+See [`geo_inference/README.md`](geo_inference/README.md) for the configuration
+and processing details.
 
 ## About
 

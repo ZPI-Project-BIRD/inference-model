@@ -5,6 +5,38 @@ import torch.nn.functional as F
 from rasterio.windows import Window
 from transformers import SegformerForSemanticSegmentation, SegformerImageProcessor
 
+DEVICE_CHOICES = ("auto", "cuda", "mps", "cpu")
+
+
+def mps_available():
+    mps = getattr(torch.backends, "mps", None)
+    return mps is not None and mps.is_available()
+
+
+def resolve_device(setting="auto"):
+    """Pick a torch device. 'auto' prefers CUDA, then Apple GPU (MPS), then CPU."""
+    setting = (setting or "auto").lower()
+    if setting == "auto":
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        if mps_available():
+            return torch.device("mps")
+        return torch.device("cpu")
+    if setting.startswith("cuda") and not torch.cuda.is_available():
+        raise RuntimeError(f"Device {setting!r} requested but CUDA is not available")
+    if setting == "mps" and not mps_available():
+        raise RuntimeError("Device 'mps' requested but Apple GPU (MPS) is not available")
+    return torch.device(setting)
+
+
+def describe_device(device):
+    if device.type == "cuda":
+        return f"GPU: {torch.cuda.get_device_name(device)}"
+    if device.type == "mps":
+        return "GPU: Apple Silicon (MPS)"
+    return "CPU (no hardware acceleration)"
+
+
 def load_model(model_dir, device):
     if not (model_dir / "config.json").exists():
         raise FileNotFoundError(f"{model_dir} has no config.json; use the saved best_model directory.")
@@ -54,7 +86,15 @@ def predict_batch(model, pixel_values, tile_size, device):
                                mode="bilinear", align_corners=False)
     return torch.sigmoid(logits[:, 0]).detach().float().cpu().numpy()
 
-def predict_raster(src, model, processor, args, device):
+def iter_predict_raster(src, model, processor, args, device):
+    """Run tiled inference and yield probability rows as soon as they are final.
+
+    Tiles are processed in row-major order, so once every tile starting at a
+    given y has been inferred, no later tile can contribute to rows above the
+    next tile row's start. Yields ``(row_start, row_end, prob_rows)`` where
+    ``prob_rows`` has shape ``(row_end - row_start, width)``; the yielded row
+    ranges are contiguous and together cover the whole raster.
+    """
     h, w = src.height, src.width
     tile, stride = args.tile_size, args.tile_size - args.overlap
     if stride <= 0:
@@ -62,10 +102,11 @@ def predict_raster(src, model, processor, args, device):
     coords = [(x, y, min(tile, w-x), min(tile, h-y))
               for y in starts(h, tile, stride) for x in starts(w, tile, stride)]
     prob_sum = np.zeros((h, w), dtype=np.float32)
-    weight_sum = np.zeros((h, w), dtype=np.float32)  
+    weight_sum = np.zeros((h, w), dtype=np.float32)
     one = np.maximum(np.hanning(tile + 2)[1:-1].astype(np.float32), 0.05)
     weights = np.outer(one, one)
     print(f"  {len(coords)} tiles to infer")
+    finalized = 0
     for off in range(0, len(coords), args.batch_size):
         batch = coords[off:off + args.batch_size]
         tensors = []
@@ -83,5 +124,17 @@ def predict_raster(src, model, processor, args, device):
             weight_sum[y:y+hh, x:x+ww] += wt
         done = min(off + len(batch), len(coords))
         print(f"\r  Inference {done}/{len(coords)}", end="", flush=True)
+        # Every remaining tile starts at or below coords[done].y.
+        final_y = coords[done][1] if done < len(coords) else h
+        if final_y > finalized:
+            rows = prob_sum[finalized:final_y] / np.maximum(weight_sum[finalized:final_y], 1e-8)
+            yield finalized, final_y, rows
+            finalized = final_y
     print()
-    return prob_sum / np.maximum(weight_sum, 1e-8)
+
+
+def predict_raster(src, model, processor, args, device):
+    prob = np.zeros((src.height, src.width), dtype=np.float32)
+    for y0, y1, rows in iter_predict_raster(src, model, processor, args, device):
+        prob[y0:y1] = rows
+    return prob

@@ -21,6 +21,7 @@ __pycache__/
 _temp/
 temp/
 .cache/
+results/
 
 .env
 .env.*

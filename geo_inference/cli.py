@@ -1,9 +1,8 @@
 """CLI for running inference on local GeoTIFFs."""
 import argparse, sys
 from pathlib import Path
-import torch
-from .model import load_model
-from .pipeline import process_file
+from .model import DEVICE_CHOICES, describe_device, load_model, resolve_device
+from .pipeline import lonlat_box, process_file
 
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__)
@@ -26,9 +25,12 @@ def parse_args():
     p.add_argument("--orthogonalize", action="store_true",
                    help="Snap near-horizontal/vertical edges; can distort rotated buildings")
     p.add_argument("--orthogonal-angle-deg", type=float, default=10.0)
-    p.add_argument("--device", choices=["auto", "cuda", "cpu"], default="auto")
+    p.add_argument("--device", choices=DEVICE_CHOICES, default="auto",
+                   help="auto = CUDA if present, else Apple GPU (MPS), else CPU")
     p.add_argument("--save-probability", action="store_true")
     p.add_argument("--save-mask", action="store_true")
+    p.add_argument("--clip-bbox", type=float, nargs=4, metavar=("MIN_LON", "MIN_LAT", "MAX_LON", "MAX_LAT"),
+                   help="Only detect inside this EPSG:4326 lon/lat rectangle (e.g. a project area).")
     return p.parse_args()
 
 def iter_tiffs(path):
@@ -51,13 +53,14 @@ def main():
     if not 0 <= args.max_rectangle_waste < 1: raise ValueError("--max-rectangle-waste must be in [0, 1)")
     if args.max_rectangle_parts < 1 or args.min_rectangle_area_m2 < 0: raise ValueError("Invalid rectangle decomposition settings")
     args.output.mkdir(parents=True, exist_ok=True)
-    device = torch.device("cuda" if args.device == "auto" and torch.cuda.is_available() else "cpu" if args.device == "auto" else args.device)
+    device = resolve_device(args.device)
     print(f"Device: {device}")
-    if device.type == "cuda": print(f"GPU: {torch.cuda.get_device_name(0)}")
+    print(describe_device(device))
     model, processor = load_model(args.model, device)
+    clip_area = lonlat_box(*args.clip_bbox) if args.clip_bbox else None
     all_features, merged_crs = [], None
     for path in iter_tiffs(args.input):
-        features, crs = process_file(path, model, processor, args, device)
+        features, crs = process_file(path, model, processor, args, device, clip_area=clip_area)
         if merged_crs is None: merged_crs = crs
         if crs == merged_crs: all_features.extend(features)
         else: print(f"Not adding {path.name} to merged output: CRS differs", file=sys.stderr)
