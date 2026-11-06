@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Prepare image/mask crop manifests for building-segmentation training."""
 from __future__ import annotations
 
 import argparse
@@ -105,7 +104,6 @@ def matches_category(fraction: float, category: str) -> bool:
 
 
 def find_crop(mask: np.ndarray, size: int, category: str, rng: random.Random, attempts: int = 250):
-    """Find a crop in the requested class, returning (x, y, building_fraction) or None."""
     height, width = mask.shape
     if height < size or width < size:
         return None
@@ -197,7 +195,6 @@ def make_manifest(records: list[dict], split: str, count: int, output_csv: Path,
 
 
 class BuildingCropDataset:
-    """PyTorch Dataset returning image tensors (3,H,W) and binary mask tensors (H,W)."""
     def __init__(self, manifest_csv: str | Path, augment: bool = False):
         self.df = pd.read_csv(manifest_csv)
         self.augment = augment

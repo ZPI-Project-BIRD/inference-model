@@ -14,7 +14,6 @@ _EPS = 1e-9
 
 
 def count_vertices(geom: BaseGeometry) -> int:
-    """Count ring coordinates (including each ring's closing coordinate)."""
     if geom.geom_type == "Polygon":
         return len(geom.exterior.coords) + sum(
             len(ring.coords) for ring in geom.interiors
@@ -25,12 +24,10 @@ def count_vertices(geom: BaseGeometry) -> int:
 
 
 def normalize_angle(angle: float) -> float:
-    """Normalize an unoriented line angle to [0, pi)."""
     return angle % math.pi
 
 
 def angle_difference(a: float, b: float) -> float:
-    """Smallest angular difference between unoriented lines, in [0, pi/2]."""
     difference = abs(normalize_angle(a) - normalize_angle(b))
     return min(difference, math.pi - difference)
 
@@ -44,7 +41,6 @@ def edge_length(p1: Sequence[float], p2: Sequence[float]) -> float:
 
 
 def interior_angle(prev, current, nxt) -> float:
-    """Smaller angle between the two rays from current (0 to pi)."""
     v1 = (prev[0] - current[0], prev[1] - current[1])
     v2 = (nxt[0] - current[0], nxt[1] - current[1])
     n1, n2 = math.hypot(*v1), math.hypot(*v2)
@@ -55,7 +51,6 @@ def interior_angle(prev, current, nxt) -> float:
 
 
 def _ring_coords(ring) -> list[tuple[float, float]]:
-    """Return unique ring vertices without the repeated closing coordinate."""
     coords = [(float(x), float(y)) for x, y, *_ in ring.coords]
     if len(coords) > 1 and math.dist(coords[0], coords[-1]) < _EPS:
         coords.pop()
@@ -77,7 +72,6 @@ def _remove_consecutive_duplicates(
 
 
 def _safe_polygon(coords, holes=None) -> Polygon | None:
-    """Construct a polygon, rejecting invalid/collapsed candidates."""
     coords = _remove_consecutive_duplicates(list(coords))
     if len(coords) < 3:
         return None
@@ -91,18 +85,12 @@ def _safe_polygon(coords, holes=None) -> Polygon | None:
 
 
 def get_parameters(area: float) -> dict[str, float]:
-    """
-    Area-dependent starting values reported for the paper's regularization.
-
-    Requires a projected CRS with linear units in metres and area in m².
-    """
     if area < 200:
         return {"D": 0.3, "Td": 0.5, "W": 6.0, "S": 20.0, "d": 0.8}
     return {"D": 1.0, "Td": 0.9, "W": 8.0, "S": 20.0, "d": 1.2}
 
 
 def initial_polygon(polygon: Polygon, tolerance: float) -> BaseGeometry:
-    """Douglas-Peucker simplification with topology preservation."""
     simplified = polygon.simplify(tolerance, preserve_topology=True)
     if (
         simplified.is_empty
@@ -118,10 +106,6 @@ def _remove_short_edges(
     threshold: float,
     min_vertices: int = 3,
 ) -> list[tuple[float, float]]:
-    """
-    Remove a vertex only when its outgoing edge is short, and only if the
-    resulting ring remains a valid polygon.
-    """
     coords = _remove_consecutive_duplicates(coords)
     changed = True
 
@@ -159,11 +143,6 @@ def _remove_extreme_angle_vertices(
     max_angle_deg: float = 170.0,
     min_vertices: int = 3,
 ) -> list[tuple[float, float]]:
-    """
-    Remove extreme-angle vertices when the result stays valid and the area
-    change is small. Concave corners are not detected here, so callers should
-    skip it for U-shaped footprints.
-    """
     coords = _remove_consecutive_duplicates(coords)
     changed = True
     min_angle = math.radians(min_angle_deg)
@@ -198,10 +177,6 @@ def _remove_extreme_angle_vertices(
 
 
 def coarse_adjust_polygon(polygon: Polygon) -> BaseGeometry | None:
-    """
-    The original polygon's holes are retained. If an exterior-ring edit would
-    invalidate the polygon, the unedited polygon is returned instead.
-    """
     if polygon.is_empty or polygon.area <= _EPS:
         return None
 
@@ -234,11 +209,9 @@ def coarse_adjust_polygon(polygon: Polygon) -> BaseGeometry | None:
 
 
 def _has_reflex_corner(coords: list[tuple[float, float]]) -> bool:
-    """Detect whether a ring has a reflex corner, using signed turn angles."""
     if len(coords) < 4:
         return False
 
-    # Signed area gives ring orientation.
     signed_area = sum(
         coords[i][0] * coords[(i + 1) % len(coords)][1]
         - coords[(i + 1) % len(coords)][0] * coords[i][1]
@@ -262,13 +235,6 @@ def find_main_directions(
     direction_threshold: float = math.pi / 12,
     max_directions: int = 4,
 ) -> list[float]:
-    """
-    Estimate dominant undirected orientations from long edges.
-
-    Edges are sorted by length and clustered using doubled-angle circular
-    means, so angles near 0 and pi are treated as the same orientation.
-    Directions are returned in radians in [0, pi).
-    """
     coords = _remove_consecutive_duplicates(coords)
     n = len(coords)
     edges = []
@@ -280,7 +246,6 @@ def find_main_directions(
             edges.append((length, edge_angle(p1, p2)))
 
     if not edges:
-        # Fallback: use the longest edges if no edge passes W.
         for i in range(n):
             p1, p2 = coords[i], coords[(i + 1) % n]
             length = edge_length(p1, p2)
@@ -319,7 +284,6 @@ def find_main_directions(
         cos_sum = sum(w * math.cos(2 * a) for w, a in cluster)
         directions.append(normalize_angle(0.5 * math.atan2(sin_sum, cos_sum)))
 
-    # Keep directions supported by the most total edge length first.
     directions_with_support = []
     for direction in directions:
         support = sum(
@@ -337,7 +301,6 @@ def nearest_main_direction(
     directions: list[float],
     include_perpendicular: bool = True,
 ) -> float:
-    """Return the closest detected direction (optionally including normals)."""
     candidates = list(directions)
     if include_perpendicular:
         candidates.extend(normalize_angle(d + math.pi / 2) for d in directions)
@@ -345,7 +308,6 @@ def nearest_main_direction(
 
 
 def _line_intersection(line1, line2):
-    """Intersect lines represented as (midpoint_x_y, angle); None if parallel."""
     (x1, y1), a1 = line1
     (x2, y2), a2 = line2
     dx1, dy1 = math.cos(a1), math.sin(a1)
@@ -372,11 +334,6 @@ def intersect_adjusted_edges(
     long_angle_tolerance: float = math.pi / 12,
     max_vertex_shift: float = 2.0,
 ) -> BaseGeometry | None:
-    """
-    Align reliable edges to nearby dominant directions and reconstruct corners
-    from adjacent adjusted lines. Unstable intersections fall back to the
-    original vertex. Invalid or excessively changed candidates are rejected.
-    """
     coords = _remove_consecutive_duplicates(coords)
     n = len(coords)
     if n < 3 or not directions:
@@ -442,14 +399,6 @@ def _merge_nearby_parallel_edges(
     angle_tolerance_deg: float = 8.0,
     min_edge_length: float = 3.0,
 ) -> Polygon:
-    """
-    Merge nearly collinear consecutive edges locally. Merging distinct parallel
-    walls globally would collapse the arms of U-shaped buildings.
-
-    A vertex is removed only when its adjacent edges are nearly collinear,
-    the shorter edge is small, and the resulting polygon remains valid with
-    limited area change.
-    """
     if (
         distance_threshold <= 0
         or polygon.is_empty
@@ -526,7 +475,6 @@ def regularize_polygon(
     *,
     merge_parallel_lines: bool = True,
 ) -> BaseGeometry | None:
-    """Run simplification, conservative coarse adjustment and fine adjustment."""
     if polygon.is_empty or polygon.area <= _EPS:
         return None
 
@@ -592,28 +540,6 @@ def polygonize_mask(
     apply_regularization: bool = True,
     min_area: float | None = None,
 ) -> Iterator[BaseGeometry]:
-    """
-    Polygonize a 2D mask and optionally regularize each polygon.
-
-    Parameters
-    ----------
-    mask:
-        2D NumPy mask. Nonzero values are treated as foreground.
-    transform:
-        Rasterio affine transform mapping pixel coordinates to map coordinates.
-    connectivity:
-        4 or 8 pixel connectivity.
-    apply_regularization:
-        Apply the regularization pipeline to each polygon.
-    min_area:
-        Optional output-area filter in the geometry CRS units squared.
-        If omitted, the paper-style area threshold is applied by regularize_polygon.
-
-    Notes
-    -----
-    For paper-style metric thresholds, transform must use a projected CRS in
-    metres. A geographic CRS (longitude/latitude) is not suitable.
-    """
     if not isinstance(mask, np.ndarray):
         raise TypeError("mask must be a NumPy array")
     if mask.ndim != 2:
@@ -676,16 +602,6 @@ def remove_near_collinear_vertices(
     angle_tolerance=12.0,
     min_edge_length=0.0,
 ):
-    """
-    Remove redundant vertices where adjoining edges are almost
-    collinear (interior angle close to 180 degrees).
-
-    angle_tolerance:
-        Maximum deviation from 180 degrees.
-
-    min_edge_length:
-        Optional minimum length for both adjoining edges.
-    """
     if polygon.is_empty or polygon.geom_type != "Polygon":
         return polygon
 
@@ -724,7 +640,6 @@ def remove_near_collinear_vertices(
             cos_angle = max(-1.0, min(1.0, dot / (len1 * len2)))
             deviation = math.degrees(math.acos(cos_angle))
 
-            # 0 degrees means straight continuation.
             if deviation <= angle_tolerance:
                 changed = True
                 continue

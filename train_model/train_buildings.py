@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Train a SegFormer model to segment building footprints in aerial imagery."""
-
 import argparse
 import json
 import math
@@ -66,8 +64,6 @@ def seed_everything(seed):
 
 
 class BuildingDataset(Dataset):
-    """Read crop coordinates from a CSV and load image/mask pairs on demand."""
-
     def __init__(self, csv_path, processor, augment=False):
         self.rows = pd.read_csv(csv_path)
         self.processor = processor
@@ -106,7 +102,6 @@ class BuildingDataset(Dataset):
         row = self.rows.iloc[index]
         x, y, size = (int(row[key]) for key in ("x", "y", "crop_size"))
 
-        # PIL opens the TIFF and crops only the requested window.
         with Image.open(row["image"]) as source:
             image = source.convert("RGB").crop((x, y, x + size, y + size))
         with Image.open(row["mask"]) as source:
@@ -128,8 +123,6 @@ class BuildingDataset(Dataset):
 
 
 class DiceBCELoss(nn.Module):
-    """Combine pixel-wise binary cross-entropy with Dice loss."""
-
     def forward(self, logits, target):
         logits = F.interpolate(logits, size=target.shape[-2:],
                                mode="bilinear", align_corners=False)
@@ -211,7 +204,6 @@ def denormalize(tensor):
 
 @torch.no_grad()
 def save_previews(model, dataset, device, output_path, count=6):
-    """Save image, label, prediction and error-overlay examples."""
     if not len(dataset):
         return
     model.eval()
@@ -255,7 +247,6 @@ def save_previews(model, dataset, device, output_path, count=6):
 
 
 def save_dataset_examples(dataset, output_path, count=8):
-    """Save a small visual check of training images and their masks."""
     if not len(dataset):
         return
     indices = np.linspace(0, len(dataset) - 1, min(count, len(dataset)), dtype=int)
@@ -299,7 +290,6 @@ def save_json(data, path):
 
 
 def load_model(model_name, device):
-    """Load pretrained encoder weights and add a binary segmentation decoder."""
     processor = SegformerImageProcessor.from_pretrained(model_name, do_resize=False)
     encoder = SegformerModel.from_pretrained(model_name)
     config = SegformerConfig.from_pretrained(

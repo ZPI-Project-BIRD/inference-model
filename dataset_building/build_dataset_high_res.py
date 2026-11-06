@@ -1,47 +1,4 @@
 #!/usr/bin/env python3
-"""
-Build an aerial-building segmentation dataset from Geoportal Poland.
-
-INPUT:
-    Two WGS84 corners:
-        lat1, lon1
-        lat2, lon2
-
-OUTPUT:
-    <output>/
-        imagery/
-            tile_000_000.tif
-            ...
-        buildings/
-            OT_BUBD_A_....gpkg
-        masks/
-            tile_000_000_mask.png
-            ...
-            mask_summary.csv
-        previews/
-            ...
-        _temp/
-            downloaded BDOT packages
-            extracted OT_BUBD_A files
-
-PIPELINE:
-    1. Convert WGS84 -> EPSG:2180.
-    2. Find every Polish powiat intersecting the AOI using the official
-       Geoportal PRG Powiaty FeatureServer.
-    3. Download the corresponding official BDOT10k county GML package(s).
-    4. Extract OT_BUBD_A building polygons.
-    5. Download 10 cm orthophotos from the official Geoportal High Resolution WCS.
-    6. Rasterize buildings into masks aligned exactly to each TIFF.
-
-The script is resumable:
-    - existing valid imagery TIFFs are skipped
-    - existing masks are skipped
-    - downloaded BDOT ZIPs are reused
-
-Dependencies:
-    pip install requests rasterio geopandas shapely pyproj pillow pandas
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -125,9 +82,6 @@ def request_with_retries(
     stream: bool = False,
     timeout=None,
 ):
-    """
-    Generic retry helper for flaky Geoportal connections.
-    """
     if timeout is None:
         timeout = (TIMEOUT_CONNECT, TIMEOUT_DOWNLOAD)
 
@@ -181,11 +135,6 @@ def find_intersecting_powiaty(
     xmax: float,
     ymax: float,
 ):
-    """
-    Uses the PRG FeatureServer rather than the BDOT10k WFS index, because the
-    latter's WFS 1.1.0 BBOX/axis-order behavior can be misleading.
-    """
-
     print()
     print("=" * 70)
     print("IDENTIFYING POWIATS")
@@ -289,7 +238,6 @@ def download_file(
     last_error = None
 
     for attempt in range(1, MAX_RETRIES + 1):
-
         try:
             session = make_session()
 
@@ -301,7 +249,6 @@ def download_file(
                     600,
                 ),
             ) as response:
-
                 response.raise_for_status()
 
                 content_type = (
@@ -320,7 +267,6 @@ def download_file(
                     temp_path,
                     "wb",
                 ) as f:
-
                     for chunk in response.iter_content(
                         chunk_size=1024 * 1024
                     ):
@@ -410,10 +356,6 @@ def download_wcs_tile(
     width,
     height,
 ):
-    """
-    Download and validate one WCS GeoTIFF.
-    """
-
     if tile_path.exists():
         try:
             with rasterio.open(tile_path) as old:
@@ -451,7 +393,6 @@ def download_wcs_tile(
     }
 
     for attempt in range(1, MAX_RETRIES + 1):
-
         print(
             f"  Downloading {tile_path.name} "
             f"(attempt {attempt}/{MAX_RETRIES})"
@@ -493,9 +434,7 @@ def download_wcs_tile(
             with rasterio.MemoryFile(
                 response.content
             ) as memfile:
-
                 with memfile.open() as src:
-
                     if src.width <= 0 or src.height <= 0:
                         raise RuntimeError(
                             "WCS returned an empty raster."
@@ -529,7 +468,6 @@ def download_wcs_tile(
             return True
 
         except Exception as exc:
-
             print(
                 f"    Failed: "
                 f"{type(exc).__name__}: {exc}"
@@ -609,9 +547,7 @@ def download_imagery(
     number = 0
 
     for iy in range(tiles_y):
-
         for ix in range(tiles_x):
-
             number += 1
 
             tile_xmin = (
@@ -815,7 +751,6 @@ def main():
     all_gml_files = []
 
     for p in powiaty:
-
         teryt = p["teryt"]
         name = p["nazwa"]
 
@@ -869,7 +804,6 @@ def main():
     )
 
     if not args.no_imagery:
-
         download_imagery(
             xmin,
             ymin,
@@ -879,14 +813,12 @@ def main():
         )
 
     else:
-
         print()
         print(
             "Skipping imagery download."
         )
 
     if not args.no_masks:
-
         create_masks(
             buildings,
             imagery_dir,
@@ -895,7 +827,6 @@ def main():
         )
 
     else:
-
         print()
         print(
             "Skipping mask generation."

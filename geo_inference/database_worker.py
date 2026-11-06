@@ -84,11 +84,6 @@ def make_minio_client() -> Minio:
 
 
 def claim_next_job() -> dict[str, Any] | None:
-    """Atomically claim a ready, failed, or stale-started job.
-
-    This follows the backend's eligibility rules and uses SKIP LOCKED so multiple
-    workers can safely poll the same queue without claiming the same job.
-    """
     sql = """
         WITH next_job AS (
             SELECT j.id
@@ -132,7 +127,6 @@ def claim_next_job() -> dict[str, Any] | None:
 
 
 def fetch_project_area(project_id: str):
-    """Return the project's lon/lat rectangle (EPSG:4326) as a shapely polygon."""
     with psycopg.connect(DATABASE_URL) as conn:
         row = conn.execute(
             """SELECT ST_X(top_left), ST_Y(top_left), ST_X(bottom_right), ST_Y(bottom_right)
@@ -167,21 +161,12 @@ def geometry_coordinates(features: list[dict[str, Any]]) -> list[Any]:
 
 
 class DetectionStream:
-    """Persist detections batch by batch while the job is still running.
-
-    Each batch of finished buildings becomes one ``geoportal.detections`` row
-    (``bounds`` = JSON array of polygon coordinates) committed immediately, so
-    readers see results in real time. The job is marked finished only once the
-    whole raster has been processed.
-    """
-
     def __init__(self, job_id: str) -> None:
         self.job_id = job_id
         self.count = 0
         self.conn = psycopg.connect(DATABASE_URL, autocommit=True)
 
     def __enter__(self) -> "DetectionStream":
-        # Replace older rows when reprocessing a failed or stale job.
         self.conn.execute(
             "DELETE FROM geoportal.detections WHERE recognition_job_id = %s",
             (self.job_id,),

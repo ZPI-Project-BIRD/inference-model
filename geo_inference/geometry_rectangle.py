@@ -1,8 +1,3 @@
-"""Fast polygon cleanup and greedy rectangle decomposition.
-
-Coordinates must be in a suitable projected CRS. Returned decompositions are
-lists of (rectangle_polygon, waste_ratio).
-"""
 from __future__ import annotations
 
 import math
@@ -23,7 +18,6 @@ _EPS = 1e-9
 
 
 def polygon_parts(geom: object) -> Iterator[Polygon]:
-    """Yield polygon components recursively."""
     if geom is None or geom.is_empty:
         return
     if isinstance(geom, Polygon):
@@ -35,7 +29,6 @@ def polygon_parts(geom: object) -> Iterator[Polygon]:
 
 
 def fill_small_holes(poly: Polygon, max_area: float) -> Polygon:
-    """Fill interior holes smaller than max_area."""
     if max_area <= 0 or poly.is_empty or not poly.interiors:
         return poly
     kept_holes = []
@@ -47,7 +40,6 @@ def fill_small_holes(poly: Polygon, max_area: float) -> Polygon:
 
 
 def orthogonalize(poly: Polygon, max_angle_deg: float) -> Polygon:
-    """Snap near-axis-aligned edges, falling back if topology/area changes too much."""
     if poly.is_empty or poly.geom_type != "Polygon" or max_angle_deg <= 0:
         return poly
 
@@ -91,7 +83,6 @@ def orthogonalize(poly: Polygon, max_angle_deg: float) -> Polygon:
         best = max(candidates, key=lambda p: p.area)
         if abs(best.area - poly.area) > max(poly.area * 0.25, 2.0):
             return poly
-        # Do not silently discard significant components created by make_valid.
         if sum(p.area for p in candidates) < poly.area * 0.995:
             return poly
         return best if len(candidates) == 1 else candidate
@@ -104,7 +95,6 @@ def rotated_rectangle(geom):
 
 
 def rectangle_waste(geom, rect=None) -> float:
-    """Fraction of the enclosing rectangle not covered by the geometry."""
     if rect is None:
         rect = geom.minimum_rotated_rectangle
     if rect.is_empty or rect.area <= _EPS:
@@ -113,7 +103,6 @@ def rectangle_waste(geom, rect=None) -> float:
 
 
 def _dominant_angle(geom) -> float:
-    """Angle of the longest edge of the minimum rotated rectangle."""
     rect = geom.minimum_rotated_rectangle
     if rect.is_empty or rect.geom_type != "Polygon":
         return 0.0
@@ -130,7 +119,6 @@ def _dominant_angle(geom) -> float:
 
 
 def _concave_vertices(poly: Polygon) -> list[tuple[float, float]]:
-    """Return reflex vertices from a valid exterior ring."""
     coords = list(poly.exterior.coords)[:-1]
     n = len(coords)
     if n < 4:
@@ -158,7 +146,6 @@ def _candidate_cuts(
     max_candidates: int = 24,
     coordinate_precision: int = 7,
 ) -> list[LineString]:
-    """Create a small deterministic set of cuts through reflex-corner axes."""
     minx, miny, maxx, maxy = geom.bounds
     span = max(maxx - minx, maxy - miny, 1.0) * 2.0
     reflex = _concave_vertices(geom) if isinstance(geom, Polygon) else []
@@ -177,9 +164,6 @@ def _candidate_cuts(
         if miny + 1e-7 < y < maxy - 1e-7
     })
 
-    # A reflex coordinate often lies exactly on the boundary of the notch.
-    # A cut placed exactly there can overlap the boundary and fail to split
-    # (common for U-shaped footprints). Test tiny offsets on either side too.
     offset = max(maxx - minx, maxy - miny, 1.0) * 1e-6
     x_cuts = sorted({
         value
@@ -201,8 +185,6 @@ def _candidate_cuts(
         for y in y_cuts
     ]
 
-    # Bound work for unusually complex/noisy outlines. Keep cuts distributed
-    # over the sorted candidate list rather than taking only one end.
     if len(raw) > max_candidates:
         if max_candidates <= 1:
             raw = raw[:1]
@@ -222,7 +204,6 @@ def _best_split(
     max_candidates: int = 24,
     split_penalty: float = 0.015,
 ):
-    """Choose a valid concave-corner cut that minimizes summed rectangle waste."""
     current_rect = geom.minimum_rotated_rectangle
     baseline_waste_area = max(0.0, current_rect.area - geom.area)
     best_parts = None
@@ -257,24 +238,12 @@ def _best_split(
     return best_parts
 
 
-
 def _snap_aligned_rectangles(
     rectangles,
     *,
     snap_distance: float,
     snap_angle_deg: float = 8.0,
 ):
-    """Snap close rectangle sides to shared coordinates in the building frame.
-
-    Rectangles are expressed in the dominant-orientation frame. Only rectangles
-    whose own orientation is already close to that frame's horizontal/vertical
-    axes are eligible. Boundary coordinates from different rectangles are
-    clustered when they are within ``snap_distance``. The cluster mean becomes
-    the shared coordinate, improving edge alignment without forcing distant
-    sides together.
-
-    Returns new aligned-frame rectangles in the same order.
-    """
     if snap_distance <= 0 or len(rectangles) < 2:
         return rectangles
 
@@ -294,7 +263,6 @@ def _snap_aligned_rectangles(
             records.append(None)
             continue
 
-        # MRRs should be rectangles; use their longest edge as orientation.
         longest = max(
             ((math.hypot(b[0]-a[0], b[1]-a[1]), math.atan2(b[1]-a[1], b[0]-a[0]))
              for a, b in zip(coords[:-1], coords[1:])),
@@ -309,9 +277,6 @@ def _snap_aligned_rectangles(
         minx, miny, maxx, maxy = rect.bounds
         records.append([minx, miny, maxx, maxy])
 
-    # Each boundary is (coordinate, rectangle index, bound slot).
-    # A cluster may contain at most one boundary from a given rectangle,
-    # preventing a narrow rectangle from snapping its own opposite sides.
     for axis, slots in ((0, (0, 2)), (1, (1, 3))):
         boundaries = []
         for idx, bounds in enumerate(records):
@@ -369,13 +334,6 @@ def decompose_building(
     snap_angle_deg: float = 8.0,
     gap_close_distance: float = 0.5,
 ):
-    """Greedily decompose a footprint into rotated rectangles.
-
-    Returns:
-        list[(merged_footprint_polygon, waste_ratio)]. The rectangles are
-        dissolved into their union, so internal rectangle edges are removed
-        and only the perimeter (plus any genuine holes) remains.
-    """
     if poly is None or poly.is_empty or poly.area <= _EPS:
         return []
     if max_parts < 1:
@@ -457,8 +415,6 @@ def decompose_building(
             })
 
         if len(parts) > max_parts:
-            # A cut may produce more than two components; reject it rather
-            # than exceed the caller's requested output bound.
             parts = parts[:index] + [target] + parts[index:]
             break
 
@@ -486,10 +442,6 @@ def decompose_building(
 
     merged = unary_union(rectangle_geometries)
 
-    # Close only small gaps between the decomposed rectangles. A positive
-    # buffer joins components whose separation is up to approximately twice
-    # the buffer radius; the negative buffer then restores the outer size.
-    # Mitre joins preserve the rectilinear character of building corners.
     if gap_close_distance > 0 and not merged.is_empty:
         radius = gap_close_distance / 2.0
         try:
@@ -500,8 +452,6 @@ def decompose_building(
             merged_parts = list(polygon_parts(merged))
 
             if closed_parts:
-                # Reject aggressive closing if it changes too much area or
-                # collapses a meaningful opening/courtyard.
                 before_area = sum(part.area for part in merged_parts)
                 after_area = sum(part.area for part in closed_parts)
                 relative_change = abs(after_area - before_area) / max(before_area, _EPS)
@@ -510,7 +460,6 @@ def decompose_building(
                 if relative_change <= 0.08 and after_holes >= before_holes:
                     merged = closed
         except Exception:
-            # Keep the ordinary union if closing fails for an invalid geometry.
             pass
 
     merged_parts = list(polygon_parts(merged))

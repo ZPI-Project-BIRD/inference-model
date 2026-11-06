@@ -13,7 +13,6 @@ def mps_available():
 
 
 def resolve_device(setting="auto"):
-    """Pick a torch device. 'auto' prefers CUDA, then Apple GPU (MPS), then CPU."""
     setting = (setting or "auto").lower()
     if setting == "auto":
         if torch.cuda.is_available():
@@ -86,14 +85,6 @@ def predict_batch(model, pixel_values, tile_size, device):
     return torch.sigmoid(logits[:, 0]).detach().float().cpu().numpy()
 
 def iter_predict_raster(src, model, processor, args, device):
-    """Run tiled inference and yield probability rows as soon as they are final.
-
-    Tiles are processed in row-major order, so once every tile starting at a
-    given y has been inferred, no later tile can contribute to rows above the
-    next tile row's start. Yields ``(row_start, row_end, prob_rows)`` where
-    ``prob_rows`` has shape ``(row_end - row_start, width)``; the yielded row
-    ranges are contiguous and together cover the whole raster.
-    """
     h, w = src.height, src.width
     tile, stride = args.tile_size, args.tile_size - args.overlap
     if stride <= 0:
@@ -123,7 +114,6 @@ def iter_predict_raster(src, model, processor, args, device):
             weight_sum[y:y+hh, x:x+ww] += wt
         done = min(off + len(batch), len(coords))
         print(f"\r  Inference {done}/{len(coords)}", end="", flush=True)
-        # Every remaining tile starts at or below coords[done].y.
         final_y = coords[done][1] if done < len(coords) else h
         if final_y > finalized:
             rows = prob_sum[finalized:final_y] / np.maximum(weight_sum[finalized:final_y], 1e-8)

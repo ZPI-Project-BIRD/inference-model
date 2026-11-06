@@ -1,15 +1,3 @@
-"""Raster inference pipeline with selectable paper or rectangle geometry.
-
-Detections are streamed: after each tile row is inferred, every connected
-building segment that can no longer grow (it does not touch the boundary with
-rows still being inferred) is converted to final geometry immediately and
-handed to an optional ``on_detections`` callback, instead of waiting for the
-whole raster to finish.
-
-An optional ``clip_area`` (a polygon in EPSG:4326 lon/lat, e.g. the project
-rectangle) restricts inference to the part of the sheet inside that area, and
-pixels outside it are never turned into detections.
-"""
 from math import ceil, floor
 from pathlib import Path
 import time
@@ -33,8 +21,6 @@ from .outputs import save_quicklook, save_results_json
 
 
 class _BuildingExtractor:
-    """Turns raw segment polygons into building / rectangle features."""
-
     def __init__(self, args, geometry_mode, source_name):
         self.args = args
         self.geometry_mode = geometry_mode
@@ -42,15 +28,12 @@ class _BuildingExtractor:
         self.building_count = 0
 
     def extract(self, poly):
-        """Return (building_feats, rectangle_feats) for one segment polygon."""
         args = self.args
         building_feats, rectangle_feats = [], []
         if poly.area < args.min_area_m2:
             return building_feats, rectangle_feats
 
         if self.geometry_mode == "paper":
-            # The paper algorithm owns its simplification/coarse/fine stages.
-            # Do not pre-simplify or orthogonalize this input a second time.
             result = regularize_polygon(poly)
             if result is None or result.is_empty:
                 return building_feats, rectangle_feats
@@ -122,13 +105,6 @@ class _BuildingExtractor:
 
 
 def _complete_segments(window_mask, at_end):
-    """Split a mask window into finished segments and the top of unfinished ones.
-
-    Polygons are returned in window pixel coordinates. A segment touching the
-    bottom row of the window may still continue into rows that are not final
-    yet, so it is deferred unless ``at_end`` is set. Returns
-    ``(complete_pixel_polygons, deferred_top_row_or_None)``.
-    """
     complete, deferred_top = [], None
     bottom = window_mask.shape[0]
     for geom_mapping, value in shapes(window_mask.astype(np.uint8), mask=window_mask,
@@ -149,18 +125,11 @@ CLIP_AREA_CRS = "EPSG:4326"
 
 
 def lonlat_box(min_lon, min_lat, max_lon, max_lat):
-    """Lon/lat rectangle as a polygon suitable for ``clip_area``."""
     return box(min(min_lon, max_lon), min(min_lat, max_lat),
                max(min_lon, max_lon), max(min_lat, max_lat))
 
 
 class _ClippedSource:
-    """Read-only view of a rasterio dataset restricted to a pixel window.
-
-    Exposes the subset of the dataset API the pipeline uses (height, width,
-    crs, transform, profile, read) in coordinates local to the window.
-    """
-
     def __init__(self, src, window):
         self.src, self.window = src, window
         self.height, self.width = int(window.height), int(window.width)
@@ -168,7 +137,6 @@ class _ClippedSource:
         self.transform = src.window_transform(window)
         self.profile = src.profile.copy()
         self.profile.update(height=self.height, width=self.width, transform=self.transform)
-        # Source block sizes may not fit the smaller extent when writing outputs.
         for key in ("blockxsize", "blockysize", "tiled"):
             self.profile.pop(key, None)
 
@@ -182,13 +150,8 @@ class _ClippedSource:
 
 
 def _clip_to_area(src, clip_area):
-    """Return (source_view, inside_mask_or_None, area_in_raster_crs_or_None).
-
-    The view is None when the raster does not overlap the area.
-    """
     if clip_area is None:
         return src, None, None
-    # Densify edges so the lon/lat rectangle stays accurate after reprojection.
     area = shape(transform_geom(CLIP_AREA_CRS, src.crs, mapping(clip_area.segmentize(0.0005))))
     inverse = ~src.transform
     minx, miny, maxx, maxy = area.bounds
@@ -212,7 +175,6 @@ def _clip_to_area(src, clip_area):
 
 
 def _clip_features(features, area, min_area):
-    """Cut feature geometries to ``area``; drop pieces that vanish or get too small."""
     kept = []
     for feat in features:
         geom = feat["geometry"]
@@ -232,16 +194,6 @@ def _clip_features(features, area, min_area):
 
 
 def process_file(path, model, processor, args, device, on_detections=None, clip_area=None):
-    """Process a raster using args.geometry_mode ('paper' or 'rectangles').
-
-    ``on_detections(building_feats)`` is called with each batch of newly
-    finished buildings as soon as they are known, while inference continues.
-
-    ``clip_area`` is an optional shapely polygon in EPSG:4326 (lon/lat). When
-    given, only the part of the raster inside it is processed and every
-    detection is confined to it. A raster that does not overlap the area
-    yields no detections.
-    """
     total_started = time.perf_counter()
     geometry_mode = getattr(args, "geometry_mode", "rectangles").lower()
     if geometry_mode not in {"paper", "rectangles"}:
@@ -269,9 +221,8 @@ def process_file(path, model, processor, args, device, on_detections=None, clip_
         transform, crs, profile = src.transform, src.crs, src.profile.copy()
         h, w = src.height, src.width
         prob = np.zeros((h, w), dtype=np.float32)
-        # Pixels that already belong to an emitted segment.
         consumed = np.zeros((h, w), dtype=bool)
-        pending_start = 0  # first row that may still hold an unfinished segment
+        pending_start = 0
 
         stage_started = time.perf_counter()
         print("[DEBUG] Stage: streaming model inference starting", flush=True)
@@ -300,7 +251,6 @@ def process_file(path, model, processor, args, device, on_detections=None, clip_
                     for poly in polygon_parts(geom):
                         b, r = extractor.extract(poly)
                         if area is not None:
-                            # Regularized outlines can overshoot the cut edge slightly.
                             b = _clip_features(b, area, args.min_area_m2)
                             r = _clip_features(r, area, 0.0)
                         new_buildings.extend(b)

@@ -39,13 +39,6 @@ def wgs84_to_2180_bbox(
     )
 
 def bdot_package_url(teryt: str) -> str:
-    """
-    BDOT10k county package convention:
-        .../schemat2021/<woj>/<teryt>_GML.zip
-
-    Example:
-        0213 -> .../02/0213_GML.zip
-    """
     if len(teryt) < 4:
         raise ValueError(
             f"Unexpected TERYT county code: {teryt}"
@@ -62,10 +55,6 @@ def extract_building_gml(
     zip_path: Path,
     destination_dir: Path,
 ):
-    """
-    Extract only OT_BUBD_A files from a county package.
-    """
-
     destination_dir.mkdir(
         parents=True,
         exist_ok=True,
@@ -76,7 +65,6 @@ def extract_building_gml(
     )
 
     with zipfile.ZipFile(zip_path) as archive:
-
         names = archive.namelist()
 
         candidates = [
@@ -130,7 +118,6 @@ def load_buildings(gml_files, bbox):
     frames = []
 
     for gml in gml_files:
-
         print()
         print(
             f"Reading: {gml}"
@@ -294,7 +281,6 @@ def create_masks(
             "No orthophoto TIFFs found."
         )
 
-    # Preview filenames can survive from earlier runs and become misleading.
     for old_preview in Path(preview_dir).glob("*_mask.png"):
         old_preview.unlink(missing_ok=True)
 
@@ -306,7 +292,6 @@ def create_masks(
         image_files,
         start=1,
     ):
-
         print()
         print(
             f"[{index}/{len(image_files)}] "
@@ -318,14 +303,11 @@ def create_masks(
             / f"{image_path.stem}_mask.png"
         )
 
-        # Always rebuild masks. A same-sized PNG may belong to an older image
-        # footprint/transform; dimensions alone cannot establish alignment.
         mask_path.unlink(missing_ok=True)
 
         with rasterio.open(
             image_path
         ) as src:
-
             width = src.width
             height = src.height
             transform = src.transform
@@ -356,14 +338,12 @@ def create_masks(
             )
 
             if tile_buildings.empty:
-
                 mask = np.zeros(
                     (height, width),
                     dtype=np.uint8,
                 )
 
             else:
-
                 shapes = [
                     (geom, 1)
                     for geom
@@ -411,7 +391,6 @@ def create_masks(
         )
 
         if preview_count < NUM_PREVIEWS:
-
             preview_path = (
                 preview_dir
                 / mask_path.name

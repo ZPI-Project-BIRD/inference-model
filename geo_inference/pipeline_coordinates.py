@@ -1,4 +1,3 @@
-"""Raster inference pipeline returning geometries without writing GIS export files."""
 from pathlib import Path
 import time
 import numpy as np
@@ -16,7 +15,6 @@ from .geometry_paper import regularize_polygon
 
 
 def process_file(path, model, processor, args, device):
-    """Process a raster using args.geometry_mode ('paper' or 'rectangles')."""
     total_started = time.perf_counter()
     geometry_mode = getattr(args, "geometry_mode", "rectangles").lower()
     if geometry_mode not in {"paper", "rectangles"}:
@@ -74,8 +72,6 @@ def process_file(path, model, processor, args, device):
                 continue
 
             if geometry_mode == "paper":
-                # The paper algorithm owns its simplification/coarse/fine stages.
-                # Do not pre-simplify or orthogonalize this input a second time.
                 result = regularize_polygon(poly)
                 if result is None or result.is_empty:
                     continue

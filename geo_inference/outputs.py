@@ -8,10 +8,8 @@ from rasterio.features import rasterize
 from shapely.geometry import mapping
 
 def save_quicklook(rgb, prob, mask, features, transform, out_path, threshold):
-    """Save a PNG showing imagery, probability, mask, and rectangle-derived outlines."""
     from rasterio.features import rasterize
 
-    # Rasterize final polygons back into the image grid for a clear outline panel.
     geometries = [(f["geometry"], 1) for f in features]
     if geometries:
         outline_raster = rasterize(
@@ -26,7 +24,6 @@ def save_quicklook(rgb, prob, mask, features, transform, out_path, threshold):
     else:
         outline_raster = np.zeros(mask.shape, dtype=np.uint8)
 
-    # For very large source rasters, downsample the preview to keep PNG manageable.
     max_dim = 1800
     scale = max(1, int(math.ceil(max(mask.shape) / max_dim)))
     rgb_v = rgb[::scale, ::scale]

@@ -1,6 +1,4 @@
 #!/usr/bin/env python3
-"""Evaluate a trained SegFormer model at multiple probability thresholds."""
-
 import argparse
 from pathlib import Path
 
@@ -14,7 +12,6 @@ from transformers import (
     SegformerForSemanticSegmentation,
     SegformerImageProcessor,
 )
-
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -106,7 +103,6 @@ def main():
     ).to(device)
     model.eval()
 
-    # Same dataset class as training. Augmentation is disabled.
     dataset = BuildingDataset(
         args.data / "val.csv",
         processor,
@@ -150,7 +146,6 @@ def main():
                 device, non_blocking=True
             ).bool()
 
-            # Training uses one output logit per pixel and sigmoid.
             logits = model(pixel_values=pixels).logits
             logits = F.interpolate(
                 logits,

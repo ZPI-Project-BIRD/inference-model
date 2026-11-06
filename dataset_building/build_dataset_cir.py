@@ -1,34 +1,4 @@
 #!/usr/bin/env python3
-"""
-Build a building-segmentation dataset using official Geoportal CIR orthophotos
-and BDOT10k OT_BUBD_A building polygons.
-
-CIR imagery is selected from the official orthophoto WFS index by the
-attribute gugik:kolor == "CIR", then downloaded from gugik:url_do_pobrania.
-This is NOT the RGB WCS service.
-
-Inputs:
-  --lat1 --lon1 --lat2 --lon2  (WGS84 corners)
-
-Output:
-  <output>/
-    imagery/       3-band CIR GeoTIFF training tiles
-    buildings/     clipped BDOT10k building polygons (GPKG)
-    masks/         aligned binary PNG masks + mask_summary.csv
-    previews/      sample masks
-    _temp/
-      cir_index.gml
-      downloaded CIR source sheets
-      downloaded BDOT10k packages and extracted GML
-
-Default CIR pixel size is 0.25 m, matching the 2025 CIR index records.
-Change --resolution if the selected CIR sheets use a
-different pixel size. Training tiles are 2048x2048 pixels by default.
-
-Dependencies:
-  pip install requests rasterio geopandas shapely pyproj pillow pandas numpy
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -114,8 +84,6 @@ def request_with_retries(method, url, *, params=None, stream=False, timeout=None
     raise RuntimeError(f"Request failed after {MAX_RETRIES} attempts: {url}") from last_error
 
 
-
-
 def local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1].split(":")[-1]
 
@@ -128,7 +96,6 @@ def child_text(node, wanted_name: str) -> str:
 
 
 def feature_bbox(feature):
-    """Read a feature's gml:boundedBy envelope, if present."""
     for node in feature.iter():
         if local_name(node.tag).lower() == "envelope":
             corners = []
@@ -147,14 +114,6 @@ def feature_bbox(feature):
 
 
 def query_cir_sheets(bbox, output_gml: Path, feature_type: str):
-    """
-    Query the CIR index, accounting for WFS 1.1.0 axis-order ambiguity.
-
-    Geoportal's WFS 1.1.0 request and response use axis order northing,easting
-    for EPSG:2180. Try both BBOX orders, but parse returned GML envelopes by
-    swapping them back to the X,Y order used by rasterio and Shapely before
-    scoring intersections.
-    """
     xmin, ymin, xmax, ymax = bbox
     aoi = box(xmin, ymin, xmax, ymax)
     base_params = {
@@ -367,18 +326,7 @@ def find_intersecting_powiaty(bbox):
     return [{"teryt": code, "nazwa": name} for code, name in result.items()]
 
 
-
-
-
-
-
-
 def create_cir_tiles(cir_paths, bbox, imagery_dir, resolution, tile_size):
-    """
-    Reproject source CIR sheets into EPSG:2180 if necessary, then write
-    georeferenced tiles over the AOI. Coverage checks are performed against
-    the reprojected VRT bounds, not the source CRS bounds.
-    """
     xmin, ymin, xmax, ymax = bbox
     imagery_dir.mkdir(parents=True, exist_ok=True)
 
@@ -520,10 +468,6 @@ def create_cir_tiles(cir_paths, bbox, imagery_dir, resolution, tile_size):
             vrt.close()
         for src in source_handles:
             src.close()
-
-
-
-
 
 
 def parse_args():
