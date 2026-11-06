@@ -94,8 +94,6 @@ def process_file(path, model, processor, args, device):
                     })
                 continue
 
-            # Rectangle mode: shared pre-cleanup, followed by rectangle
-            # decomposition and dissolved perimeter generation.
             prepared = fill_small_holes(poly, args.hole_area_m2)
             if args.simplify_m > 0:
                 prepared = prepared.simplify(args.simplify_m, preserve_topology=True)
@@ -133,8 +131,6 @@ def process_file(path, model, processor, args, device):
                         "geometry_mode": "rectangles",
                         "threshold": args.threshold,
                     })
-                # The current rectangle module returns dissolved footprint
-                # polygons (not the individual internal rectangles).
                 for idx, (outline, waste) in enumerate(decomposition, start=1):
                     rectangle_feats.append({
                         "geometry": outline,

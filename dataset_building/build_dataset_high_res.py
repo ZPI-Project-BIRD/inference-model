@@ -182,12 +182,8 @@ def find_intersecting_powiaty(
     ymax: float,
 ):
     """
-    Find all powiats whose official PRG geometry intersects
-    the AOI.
-
-    This intentionally uses the official PRG FeatureServer,
-    rather than the BDOT10k WFS index, because the latter's
-    WFS 1.1.0 BBOX/axis-order behavior can be misleading.
+    Uses the PRG FeatureServer rather than the BDOT10k WFS index, because the
+    latter's WFS 1.1.0 BBOX/axis-order behavior can be misleading.
     """
 
     print()

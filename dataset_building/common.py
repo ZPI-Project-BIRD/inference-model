@@ -1,4 +1,3 @@
-"""Shared geospatial helpers for the Geoportal dataset builders."""
 from pathlib import Path
 import zipfile
 import geopandas as gpd
@@ -166,8 +165,6 @@ def load_buildings(gml_files, bbox):
             ~buildings.geometry.is_empty
         ].copy()
 
-        # This is deliberately the same direct intersection
-        # approach that was verified with the user's data.
         buildings = buildings[
             buildings.geometry.intersects(
                 aoi_geom
@@ -200,7 +197,6 @@ def load_buildings(gml_files, bbox):
         crs=CRS,
     )
 
-    # Remove invalid/empty geometries.
     buildings = buildings[
         buildings.geometry.notna()
     ].copy()
@@ -348,8 +344,6 @@ def create_masks(
                 src.bounds.top,
             )
 
-            # Direct geometry intersection. This is deliberately
-            # the same approach verified against the user's data.
             tile_buildings = buildings[
                 buildings.geometry.intersects(
                     tile_polygon
@@ -416,7 +410,6 @@ def create_masks(
             mask_path
         )
 
-        # Preview masks.
         if preview_count < NUM_PREVIEWS:
 
             preview_path = (

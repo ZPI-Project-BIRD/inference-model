@@ -21,18 +21,12 @@ Output:
       downloaded CIR source sheets
       downloaded BDOT10k packages and extracted GML
 
-Default CIR pixel size is 0.25 m, matching the sample 2025 CIR index records
-provided by the user. Change --resolution if the selected CIR sheets use a
+Default CIR pixel size is 0.25 m, matching the 2025 CIR index records.
+Change --resolution if the selected CIR sheets use a
 different pixel size. Training tiles are 2048x2048 pixels by default.
 
 Dependencies:
   pip install requests rasterio geopandas shapely pyproj pillow pandas numpy
-
-Note:
-  This script is designed for the 2025 index layer. It parses the WFS feature
-  attributes, filters CIR records, downloads original linked TIFFs, and makes
-  aligned training tiles. It has not been verified against every possible
-  Geoportal response/schema variation.
 """
 
 from __future__ import annotations

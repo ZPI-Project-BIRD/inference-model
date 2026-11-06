@@ -1,9 +1,5 @@
 """Fast polygon cleanup and greedy rectangle decomposition.
 
-The public API remains compatible with the original module:
-    polygon_parts, fill_small_holes, orthogonalize, rotated_rectangle,
-    rectangle_waste, decompose_building
-
 Coordinates must be in a suitable projected CRS. Returned decompositions are
 lists of (rectangle_polygon, waste_ratio).
 """
@@ -104,7 +100,6 @@ def orthogonalize(poly: Polygon, max_angle_deg: float) -> Polygon:
 
 
 def rotated_rectangle(geom):
-    """Return the minimum-area rotated rectangle."""
     return geom.minimum_rotated_rectangle
 
 
@@ -114,8 +109,6 @@ def rectangle_waste(geom, rect=None) -> float:
         rect = geom.minimum_rotated_rectangle
     if rect.is_empty or rect.area <= _EPS:
         return 1.0
-    # The minimum rotated rectangle encloses the geometry, so intersection()
-    # is unnecessary; this is equivalent and materially cheaper.
     return max(0.0, min(1.0, 1.0 - geom.area / rect.area))
 
 
@@ -170,8 +163,6 @@ def _candidate_cuts(
     span = max(maxx - minx, maxy - miny, 1.0) * 2.0
     reflex = _concave_vertices(geom) if isinstance(geom, Polygon) else []
 
-    # For multipart inputs, use the component vertices. Normally recursive
-    # decomposition means this branch is not needed, but it keeps the helper safe.
     if not reflex:
         return []
 
@@ -250,13 +241,11 @@ def _best_split(
         if len(pieces) < 2:
             continue
 
-        # Preserve all of the source footprint, including small fragments.
         if sum(p.area for p in pieces) < geom.area * 0.999:
             continue
         if any(p.area < min_part_area for p in pieces):
             continue
 
-        # One MRR per piece; no repeated intersection or rectangle calculation.
         rect_area_sum = sum(p.minimum_rotated_rectangle.area for p in pieces)
         waste_sum = max(0.0, rect_area_sum - sum(p.area for p in pieces))
         score = waste_sum + split_penalty * geom.area * (len(pieces) - 1)
@@ -382,12 +371,6 @@ def decompose_building(
 ):
     """Greedily decompose a footprint into rotated rectangles.
 
-    Fast paths:
-      * already-rectangular polygons are returned without rotating/splitting;
-      * only reflex-corner coordinates are considered as cut locations;
-      * candidate count and total output part count are bounded;
-      * rectangle waste uses area ratios instead of costly intersections.
-
     Returns:
         list[(merged_footprint_polygon, waste_ratio)]. The rectangles are
         dissolved into their union, so internal rectangle edges are removed
@@ -433,7 +416,6 @@ def decompose_building(
     aligned_rect = aligned.minimum_rotated_rectangle
     aligned_waste = rectangle_waste(aligned, aligned_rect)
 
-    # Keep cached MRR and waste with each active component.
     parts = [{
         "geom": aligned,
         "rect": aligned_rect,
@@ -477,12 +459,9 @@ def decompose_building(
         if len(parts) > max_parts:
             # A cut may produce more than two components; reject it rather
             # than exceed the caller's requested output bound.
-            # Recompute target state and stop safely.
             parts = parts[:index] + [target] + parts[index:]
             break
 
-    # Snap nearby rectangle boundaries in the common dominant-orientation
-    # frame. This is the user-adjustable alignment distance (map units).
     aligned_rectangles = [item["rect"] for item in parts]
     snapped_rectangles = _snap_aligned_rectangles(
         aligned_rectangles,
@@ -505,10 +484,6 @@ def decompose_building(
     if not rectangle_geometries:
         return [(original_rect, original_waste)]
 
-    # Dissolve the component rectangles. This removes all internal seams,
-    # leaving only the outline of their combined shape (and real holes).
-    # The benchmark can therefore draw one footprint perimeter instead of
-    # drawing every decomposition rectangle separately.
     merged = unary_union(rectangle_geometries)
 
     # Close only small gaps between the decomposed rectangles. A positive
@@ -542,7 +517,6 @@ def decompose_building(
     if not merged_parts:
         return [(original_rect, original_waste)]
 
-    # Report one waste value for each final perimeter.
     waste = max(
         0.0,
         min(1.0, 1.0 - total_source_area / max(total_rectangle_area, _EPS)),

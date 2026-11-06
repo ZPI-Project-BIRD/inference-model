@@ -1,4 +1,3 @@
-"""CLI for running inference on local GeoTIFFs."""
 import argparse, sys
 from pathlib import Path
 from .model import DEVICE_CHOICES, describe_device, load_model, resolve_device

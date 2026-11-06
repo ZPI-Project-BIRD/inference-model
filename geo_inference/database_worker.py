@@ -1,4 +1,3 @@
-"""Poll recognition jobs; stream coordinate-only detection rows to the DB as they are found."""
 from __future__ import annotations
 
 import json
@@ -48,12 +47,10 @@ POLL_SECONDS = max(1.0, float(os.getenv("JOB_POLL_SECONDS", "3")))
 
 
 def safe_name(value: str) -> str:
-    """Make IDs safe to use as directory names."""
     return re.sub(r"[^A-Za-z0-9._-]+", "_", value).strip("._") or "item"
 
 
 def make_model_options(output_dir: Path) -> SimpleNamespace:
-    """Read inference options from environment variables."""
     return SimpleNamespace(
         output=output_dir,
         threshold=float(os.getenv("MODEL_THRESHOLD", "0.5")),
@@ -149,7 +146,6 @@ def fetch_project_area(project_id: str):
 
 
 def mark_job_failed(job_id: str, message: str) -> None:
-    """Store a concise failure message and mark the job as failed."""
     with psycopg.connect(DATABASE_URL) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -161,7 +157,6 @@ def mark_job_failed(job_id: str, message: str) -> None:
 
 
 def geometry_coordinates(features: list[dict[str, Any]]) -> list[Any]:
-    """Keep only geometry coordinates; omit properties, CRS metadata, scores and IDs."""
     coordinates = []
     for feature in features:
         geometry = feature.get("geometry")
@@ -252,7 +247,6 @@ def process_job(job: dict[str, Any], model: Any, processor: Any, device: torch.d
     output_dir.mkdir(parents=True, exist_ok=True)
     log.info("Starting job=%s feature=%s object=%s", job_id, feature_id, object_name)
 
-    # Keep the source object's filename so output filenames are recognisable.
     job_started = time.perf_counter()
     with tempfile.TemporaryDirectory(prefix="geo-inference-") as temp_dir, \
             DetectionStream(job_id) as stream:
@@ -294,7 +288,6 @@ def main() -> None:
         MINIO_ENDPOINT,
     )
 
-    # Fail early if the database is unreachable or the expected schema is absent.
     with psycopg.connect(DATABASE_URL) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT to_regclass('geoportal.recognition_jobs'), to_regclass('geoportal.detections')")

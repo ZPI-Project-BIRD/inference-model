@@ -1,4 +1,3 @@
-"""Modular building-footprint inference."""
 import os
 
 # Let PyTorch run any operator Apple's GPU backend (MPS) lacks on the CPU
