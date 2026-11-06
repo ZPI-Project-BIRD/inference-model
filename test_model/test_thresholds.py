@@ -132,13 +132,11 @@ def main():
     if len(dataset) == 0:
         raise RuntimeError("Validation dataset is empty.")
 
-    # Accumulate pixel counts across the entire validation dataset.
     counts = {
         threshold: {"tp": 0, "fp": 0, "fn": 0}
         for threshold in args.thresholds
     }
 
-    # Store per-image results too, so we can inspect variation.
     per_image_rows = []
 
     with torch.inference_mode():
@@ -209,9 +207,6 @@ def main():
                 f"Processed batch {batch_index}/{len(loader)}"
             )
 
-    # Global pixel metrics, calculated from the summed counts.
-    # These match the aggregation style used by your training
-    # script, rather than averaging per-image scores.
     rows = []
 
     for threshold in args.thresholds:

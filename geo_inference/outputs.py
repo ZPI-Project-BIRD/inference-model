@@ -1,4 +1,3 @@
-"""JSON and visual-preview output helpers."""
 import json, math
 from pathlib import Path
 import matplotlib
@@ -43,7 +42,6 @@ def save_quicklook(rgb, prob, mask, features, transform, out_path, threshold):
     axes[2].imshow(mask_v, cmap="gray", vmin=0, vmax=1)
     axes[2].set_title(f"Binary mask (threshold {threshold:.2f})")
     axes[3].imshow(rgb_v)
-    # Draw polygon boundaries in red, without filling the interiors.
     axes[3].contour(outline_v, levels=[0.5], colors=["red"], linewidths=0.6)
     axes[3].set_title(f"Rectangle-derived outlines ({len(features)} polygons)")
     for ax in axes:
@@ -53,7 +51,6 @@ def save_quicklook(rgb, prob, mask, features, transform, out_path, threshold):
     plt.close(fig)
 
 def save_results_json(features, output_path, source_name, crs):
-    """Save building footprints as a standards-based GeoJSON FeatureCollection."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     document = {

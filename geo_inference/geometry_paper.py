@@ -10,10 +10,6 @@ from shapely.geometry import Polygon, MultiPolygon, shape
 from shapely.geometry.base import BaseGeometry
 
 
-# ---------------------------------------------------------------------------
-# Geometry utilities
-# ---------------------------------------------------------------------------
-
 _EPS = 1e-9
 
 
@@ -94,10 +90,6 @@ def _safe_polygon(coords, holes=None) -> Polygon | None:
     return candidate
 
 
-# ---------------------------------------------------------------------------
-# Area-dependent parameters
-# ---------------------------------------------------------------------------
-
 def get_parameters(area: float) -> dict[str, float]:
     """
     Area-dependent starting values reported for the paper's regularization.
@@ -108,10 +100,6 @@ def get_parameters(area: float) -> dict[str, float]:
         return {"D": 0.3, "Td": 0.5, "W": 6.0, "S": 20.0, "d": 0.8}
     return {"D": 1.0, "Td": 0.9, "W": 8.0, "S": 20.0, "d": 1.2}
 
-
-# ---------------------------------------------------------------------------
-# Initial simplification
-# ---------------------------------------------------------------------------
 
 def initial_polygon(polygon: Polygon, tolerance: float) -> BaseGeometry:
     """Douglas-Peucker simplification with topology preservation."""
@@ -125,10 +113,6 @@ def initial_polygon(polygon: Polygon, tolerance: float) -> BaseGeometry:
     return simplified
 
 
-# ---------------------------------------------------------------------------
-# Coarse adjustment
-# ---------------------------------------------------------------------------
-
 def _remove_short_edges(
     coords: list[tuple[float, float]],
     threshold: float,
@@ -136,8 +120,7 @@ def _remove_short_edges(
 ) -> list[tuple[float, float]]:
     """
     Remove a vertex only when its outgoing edge is short, and only if the
-    resulting ring remains a valid polygon. This avoids the repeated
-    indiscriminate vertex deletion that can create indents.
+    resulting ring remains a valid polygon.
     """
     coords = _remove_consecutive_duplicates(coords)
     changed = True
@@ -146,7 +129,6 @@ def _remove_short_edges(
         changed = False
         n = len(coords)
 
-        # Consider shortest edges first.
         edge_indices = sorted(
             range(n),
             key=lambda i: edge_length(coords[i], coords[(i + 1) % n]),
@@ -156,7 +138,6 @@ def _remove_short_edges(
             if edge_length(coords[i], coords[(i + 1) % n]) >= threshold:
                 break
 
-            # Remove the endpoint at i+1, retaining vertex i.
             remove_index = (i + 1) % n
             candidate_coords = coords[:remove_index] + coords[remove_index + 1:]
 
@@ -179,11 +160,9 @@ def _remove_extreme_angle_vertices(
     min_vertices: int = 3,
 ) -> list[tuple[float, float]]:
     """
-    Conservatively remove extreme-angle vertices only if the replacement
-    polygon is valid and the area change is modest. Concave corners are
-    not classified using a signed interior angle here, so this is deliberately
-    conservative; callers may disable it for U-shaped or highly concave
-    footprints.
+    Remove extreme-angle vertices when the result stays valid and the area
+    change is small. Concave corners are not detected here, so callers should
+    skip it for U-shaped footprints.
     """
     coords = _remove_consecutive_duplicates(coords)
     changed = True
@@ -220,8 +199,6 @@ def _remove_extreme_angle_vertices(
 
 def coarse_adjust_polygon(polygon: Polygon) -> BaseGeometry | None:
     """
-    Coarse adjustment with conservative topology checks.
-
     The original polygon's holes are retained. If an exterior-ring edit would
     invalidate the polygon, the unedited polygon is returned instead.
     """
@@ -236,8 +213,6 @@ def coarse_adjust_polygon(polygon: Polygon) -> BaseGeometry | None:
     if len(exterior) < 3:
         return None
 
-    # Avoid destructive coarse edits to strongly concave shapes such as U's.
-    # Short-edge removal is attempted, but every deletion must remain valid.
     exterior = _remove_short_edges(exterior, params["Td"])
     candidate = _safe_polygon(
         exterior,
@@ -246,8 +221,6 @@ def coarse_adjust_polygon(polygon: Polygon) -> BaseGeometry | None:
     if candidate is None:
         return polygon
 
-    # Only simplify extreme angles if it does not damage a concave footprint.
-    # This operation is intentionally skipped for polygons with reflex corners.
     if not _has_reflex_corner(exterior):
         cleaned = _remove_extreme_angle_vertices(exterior)
         candidate2 = _safe_polygon(
@@ -282,10 +255,6 @@ def _has_reflex_corner(coords: list[tuple[float, float]]) -> bool:
             return True
     return False
 
-
-# ---------------------------------------------------------------------------
-# Dominant-direction detection
-# ---------------------------------------------------------------------------
 
 def find_main_directions(
     coords: list[tuple[float, float]],
@@ -375,10 +344,6 @@ def nearest_main_direction(
     return min(candidates, key=lambda candidate: angle_difference(angle, candidate))
 
 
-# ---------------------------------------------------------------------------
-# Fine adjustment and reconstruction
-# ---------------------------------------------------------------------------
-
 def _line_intersection(line1, line2):
     """Intersect lines represented as (midpoint_x_y, angle); None if parallel."""
     (x1, y1), a1 = line1
@@ -462,7 +427,6 @@ def intersect_adjusted_edges(
     if candidate is None:
         return None
 
-    # Prevent regularization from dramatically changing area or footprint.
     area_change = abs(candidate.area - original.area) / max(original.area, _EPS)
     symmetric_change = candidate.symmetric_difference(original).area / max(original.area, _EPS)
 
@@ -479,11 +443,8 @@ def _merge_nearby_parallel_edges(
     min_edge_length: float = 3.0,
 ) -> Polygon:
     """
-    Conservatively merge redundant, nearly collinear consecutive edges.
-
-    This is a safe local reconstruction step, not a global operation that
-    moves distinct parallel walls onto one line. Global merging can collapse
-    the arms or opening of a U-shaped building, so it is intentionally avoided.
+    Merge nearly collinear consecutive edges locally. Merging distinct parallel
+    walls globally would collapse the arms of U-shaped buildings.
 
     A vertex is removed only when its adjacent edges are nearly collinear,
     the shorter edge is small, and the resulting polygon remains valid with
@@ -523,9 +484,6 @@ def _merge_nearby_parallel_edges(
             if angle_difference(a1, a2) > angle_tol:
                 continue
 
-            # A vertex is redundant when it lies close to the line joining
-            # its neighbors. Only merge if at least one segment is relatively
-            # short; do not flatten two substantial building walls.
             baseline = edge_length(prev, nxt)
             if baseline < _EPS:
                 continue
@@ -546,7 +504,6 @@ def _merge_nearby_parallel_edges(
             if area_change > 0.02:
                 continue
 
-            # Preserve holes by rebuilding with the original interior rings.
             if polygon.interiors:
                 with_holes = Polygon(
                     _ring_coords(candidate.exterior),
@@ -603,7 +560,6 @@ def regularize_polygon(
     if fine is None:
         return coarse
 
-    # Preserve interior rings. If fine adjustment would discard holes, reject it.
     if len(coarse.interiors) > 0:
         fine_with_holes = Polygon(
             _ring_coords(fine.exterior),
@@ -628,10 +584,6 @@ def regularize_polygon(
 
     return result if result.is_valid and result.area > _EPS else coarse
 
-
-# ---------------------------------------------------------------------------
-# Raster polygonization
-# ---------------------------------------------------------------------------
 
 def polygonize_mask(
     mask: np.ndarray,
