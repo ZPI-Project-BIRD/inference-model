@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-
+import gc
 import psycopg
 import torch
 from dotenv import load_dotenv
@@ -44,6 +44,7 @@ MODEL_DIR = Path(required_env("MODEL_DIR"))
 RESULTS_DIR = Path(os.getenv("RESULTS_DIR", "results/database-worker")).expanduser()
 DEVICE_SETTING = os.getenv("MODEL_DEVICE", "auto")
 POLL_SECONDS = max(1.0, float(os.getenv("JOB_POLL_SECONDS", "3")))
+MODEL_IDLE_TIMEOUT = max(0.0, float(os.getenv("MODEL_IDLE_TIMEOUT", "120")))
 
 
 def safe_name(value: str) -> str:
@@ -258,6 +259,70 @@ def process_job(job: dict[str, Any], model: Any, processor: Any, device: torch.d
              job_id, len(features), output_dir, time.perf_counter() - job_started)
 
 
+def process_job_with_cpu_fallback(
+    job: dict[str, Any],
+    model_state: dict[str, Any],
+    preferred_device: torch.device,
+    minio: Minio,
+) -> None:
+
+    model = model_state["model"]
+    processor = model_state["processor"]
+    model_device = model_state["device"]
+
+    if model is None:
+        model_device = preferred_device
+
+        try:
+            log.info("Loading model for job %s on %s", job["id"], model_device,)
+            model, processor = load_model(MODEL_DIR, model_device)
+
+        except torch.cuda.OutOfMemoryError:
+            if preferred_device.type != "cuda":
+                raise
+
+            log.warning("GPU OOM while loading model. Falling back to CPU.")
+
+            model = None
+            processor = None
+            gc.collect()
+            torch.cuda.empty_cache()
+            model_device = torch.device("cpu")
+            model, processor = load_model(MODEL_DIR, model_device)
+
+        model_state.update({"model": model, "processor": processor, "device": model_device})
+
+    try:
+        log.info(
+            "Processing job %s using %s",
+            job["id"],
+            model_device,
+        )
+        process_job(job, model, processor, model_device, minio)
+
+    except torch.cuda.OutOfMemoryError:
+        if model_device.type != "cuda":
+            raise
+
+        log.warning(
+            "GPU OOM during inference for job %s. "
+            "Releasing GPU model and retrying on CPU.",
+            job["id"],
+        )
+
+        model_state.update({"model": None, "processor": None})
+
+        model = None
+        processor = None
+        gc.collect()
+        torch.cuda.empty_cache()
+        model_device = torch.device("cpu")
+        log.info("Loading model for job %s on CPU", job["id"])
+        model, processor = load_model(MODEL_DIR, model_device)
+        model_state.update({"model": model, "processor": processor, "device": model_device})
+        process_job(job, model, processor, model_device, minio)
+
+
 def main() -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -283,19 +348,30 @@ def main() -> None:
                 )
 
     device = resolve_device(DEVICE_SETTING)
-    log.info("Inference device: %s", describe_device(device))
-    log.info("Loading model from %s on %s", MODEL_DIR, device)
-    model, processor = load_model(MODEL_DIR, device)
+    model_state = {"model": None, "processor": None, "device": device}
+    idle_since = None
 
     log.info("Polling for pending recognition jobs every %.1f seconds", POLL_SECONDS)
     while True:
         try:
             job = claim_next_job()
             if job is None:
+                if model_state["model"] is not None:
+                    if idle_since is None:
+                        idle_since = time.monotonic()
+                    idle_duration = time.monotonic() - idle_since
+                    if idle_duration >= MODEL_IDLE_TIMEOUT:
+                        model_state.update({"model": None, "processor": None, "device": device})
+                        gc.collect()
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                        idle_since = None
                 time.sleep(POLL_SECONDS)
                 continue
+            idle_since = None
+            log.info("Claimed job %s", job["id"])
             try:
-                process_job(job, model, processor, device, minio)
+                process_job_with_cpu_fallback(job, model_state, device, minio)
             except Exception as exc:
                 log.exception("Recognition job %s failed", job["id"])
                 try:
@@ -304,6 +380,10 @@ def main() -> None:
                     log.exception("Could not mark job %s as failed", job["id"])
         except KeyboardInterrupt:
             log.info("Stopping database worker")
+            model_state.update({"model": None, "processor": None})
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
             break
         except Exception:
             log.exception("Database polling failed; retrying in %.1f seconds", POLL_SECONDS)

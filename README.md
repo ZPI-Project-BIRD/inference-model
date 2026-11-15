@@ -69,6 +69,8 @@ The following models were trained using this pipeline:
 
 - [Building Segmentation Poland — B2](https://huggingface.co/McAntek/building-segmentation-poland-b2)
 - [Building Segmentation Poland — B3](https://huggingface.co/McAntek/building-segmentation-poland-b3)
+- **[Building Segmentation Poland — B5](https://huggingface.co/McAntek/building-segmentation-poland-b5)**
+
 
 
 First I tested different avaible models I could find on Hugging Face. They did perform well, when it came to areas with a lot of buildings, but struggled when it came to country side areas with low amounts of buildings. 
