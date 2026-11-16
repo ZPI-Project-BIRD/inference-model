@@ -72,6 +72,7 @@ def make_model_options(output_dir: Path) -> SimpleNamespace:
         orthogonal_angle_deg=float(os.getenv("MODEL_ORTHOGONAL_ANGLE_DEG", "10.0")),
         save_probability=os.getenv("MODEL_SAVE_PROBABILITY", "false").lower() in {"1", "true", "yes"},
         save_mask=os.getenv("MODEL_SAVE_MASK", "false").lower() in {"1", "true", "yes"},
+        training_resolution_m=float(os.getenv("MODEL_TRAINING_RESOLUTION_M", "0.10")),
     )
 
 
